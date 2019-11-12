@@ -1,5 +1,6 @@
 import collections, random, math
 from collections import defaultdict
+from matplotlib import pyplot as plt
 
 ############################################################
 
@@ -206,10 +207,15 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
         raise Exception("Invalid probs: %s" % probs)
 
     totalRewards = []  # The rewards we get on each trial
+    time_list = []
+    avg_list = []
     for trial in range(numTrials):
         if trial % 1000 == 0 and trial != 0:
             print ("Trial", trial)
-            print("Curr Avg", sum(totalRewards)/len(totalRewards))
+            time_list.append(trial)
+            avg = sum(totalRewards)/len(totalRewards)
+            print("Curr Avg", avg)
+            avg_list.append(avg)
         state = mdp.startState()
         sequence = [state]
         totalDiscount = 1
@@ -236,4 +242,12 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
         if verbose:
             print(("Trial %d (totalReward = %s): %s" % (trial, totalReward, sequence)))
         totalRewards.append(totalReward)
+    fig = plt.figure()
+    ax = plt.axes()
+    plt.title('Training History')
+    plt.xlabel('Episodes')
+    plt.ylabel('Rewards')
+    ax.plot(time_list, avg_list)
+    plt.show()
+    # plt.plot(time_list, avg_list)
     return totalRewards

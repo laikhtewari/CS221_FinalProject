@@ -35,7 +35,7 @@ class DisasterMDP(util.MDP):
     # * When the probability is 0 for a transition to a particular new state,
     #   don't include that state in the list returned by succAndProbReward.
     def succAndProbReward(self, state, action):
-        if state[0] < self.issuesSuccCost[action][1]:
+        if state[0] < self.issuesSuccCost[action][1]: #if don't have enough
             return [(state, 1, -1)]
         done = True
         for k in state[1]:
@@ -84,9 +84,9 @@ if __name__ == '__main__':
     # print('=' * 6, 'simulating', '=' * 6)
     # totalVIRewards = simulate(model, fixedVIAlgo)
     # print('Avg VI Reward:', sum(totalVIRewards)/len(totalVIRewards))
-
+    random.seed(42)
     print('=' * 6, 'initialization', '=' * 6)
     qLearningSolver = util.QLearningAlgorithm(model.actions, 1, identityFeatureExtractor)
     print('=' * 6, 'simulating', '=' * 6)
-    totalQLRewards = util.simulate(model, qLearningSolver, numTrials=30000)
+    totalQLRewards = util.simulate(model, qLearningSolver, numTrials=250000)
     print('Avg QL Reward:', sum(totalQLRewards)/len(totalQLRewards))
