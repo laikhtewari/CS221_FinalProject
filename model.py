@@ -1,12 +1,14 @@
 import util, math, random
-from collections import defaultdict
 import numpy as np
 
-
-# Class to succinctly apply the effect of an action
+# Class to succinctly apply the effect of an action to a state
 # When generate_effect is called, returns a new state after accounting for
-# the effect this action can have on the state if it is successful
+# the effect this action produces - modeled as a gaussian
 class ActionEffect():
+    """
+    Category:field refers to the specific aspect of state this action can affect, where category can be
+    resources or severities
+    """
     def __init__(self, category, field, mean, std):
         self.category = category
         self.field = field
@@ -19,15 +21,20 @@ class ActionEffect():
         resources, severity = state
         if self.category == 'resources':
             resources[self.field] += np.random.normal(self.mean * multiplier, self.std * abs(multiplier))
-        else:
+        elif self.category == 'severities':
             severity[self.field] += np.random.normal(self.mean * multiplier, self.std * abs(multiplier))
+        else:
+            raise ValueError('The category of an ActionEffect object must be either \'resources\' or \'severities\'')
 
         return resources, severity
 
 # IMPLEMENT LATER
+# Describes how a state's severities compound upon itself and might influence other severities (i.e. high food shortages
+# can lead to more civil unrest)
 class CompoundingEffect():
-    def __init__(self, field, mean, std):
+    def __init__(self, field, target_field, mean, std):
         self.field = field
+        self.target_field = target_field
         self.mean = mean
         self.std = std
 
@@ -38,8 +45,8 @@ class CompoundingEffect():
 
 
 class DisasterMDP(util.MDP):
-    # For readability, init would only take on default values for state. Any changes to the default value
-    # would then be updated using set_initial_state
+    # For readability (we don't want 25 params), init would only take on default values for state.
+    # Any changes to the default value would then be updated using set_initial_state
     def __init__(self):
 
         ### INITIAL STATE VARIABLES ###
@@ -57,8 +64,9 @@ class DisasterMDP(util.MDP):
         }
 
         """
-        A measure (scale of 1 to 10)
-        Not only does this give a measure of the final reward
+        A measure (scale of 1 to 10) of the severities of several of the categories of the crisis situation that should
+        be addressed. Once severity levels are sufficiently lowered, the disaster is mitigated and the disaster is solved
+        Additionally, high severities tend to get worse and are harder to mitigate
         """
         self.initial_severities = {
             'food_shortage': 5.0,
@@ -68,15 +76,16 @@ class DisasterMDP(util.MDP):
         }
 
         """
-        Dict of action: (resource needed, probability of success)
+        When an action is to be take, get the cost associated and the probability of success
+        Dict of action: (resource needed, price per unit, probability of success)
         """
-        self.action_succ_rates = {
-            'fundraise': (None, 1.0),
-            'hire': ('cash', 1.0),
-            'buy_food': ('cash', 1.0),
-            'send_food': ('foodstuff', 0.9),
-            'diplomacy': ('personnel', 0.7),
-            'build': ('personnel', 0.8)
+        self.action_cost_succ = {
+            'fundraise': (None, None, 1.0),
+            'hire': ('cash', 2500.0, 1.0),
+            'buy_food': ('cash', 1000.0, 1.0),
+            'send_food': ('foodstuff', 10.0, 0.9),
+            'diplomacy': ('personnel', 5.0, 0.7),
+            'build': ('personnel', 5.0, 0.8)
         }
 
         """
@@ -102,7 +111,7 @@ class DisasterMDP(util.MDP):
 
         # After the effect of the ACTION takes place, severities would then develop again based on
         # probabilistic relationships
-        # IMPLEMENT LATER
+        # IMPLEMENT LATER - should make things much more interesting
         self.compounding_effects = {
             'food_shortage': [],
             'infrastructure': [],
@@ -124,7 +133,7 @@ class DisasterMDP(util.MDP):
     |threshold|: the depth to search
     """
 
-    def set_initial_state(self, resources, severities, action_succ_rates, threshold=3):
+    def set_initial_state(self, resources, severities, action_succ_cost, action_effects, compounding_effects, threshold=3):
         for key, value in resources.items():
             if key in self.initial_resources:
                 self.initial_resources[key] = value
@@ -133,9 +142,17 @@ class DisasterMDP(util.MDP):
             if key in self.initial_severities:
                 self.initial_severities[key] = value
 
-        for key, value in action_succ_rates.items():
-            if key in self.action_succ_rates and 0 <= value <= 1:
-                self.action_succ_rates[key] = value
+        for key, value in action_succ_cost.items():
+            if key in self.action_cost_succ and 0 <= value[2] <= 1:
+                self.action_cost_succ[key] = value
+
+        for key, value in action_effects.items():
+            if key in self.action_effects:
+                self.action_effects[key] = value
+
+        for key, value in compounding_effects.items():
+            if key in self.compounding_effects:
+                self.compounding_effects[key] = value
 
         self.threshold = threshold
 
@@ -157,20 +174,17 @@ class DisasterMDP(util.MDP):
         return tuple(self.initial_resources.values()), tuple(self.initial_severities.values())
 
     def actions(self, state):
-        return list(self.action_succ_rates.keys())
+        return list(self.action_cost_succ.keys())
 
     # Given a |state| and |action|, return a list of (newState, prob, reward) tuples
     # corresponding to the states reachable from |state| when taking |action|.
     def succAndProbReward(self, state, action):
-        resource_needed, prob_success = self.action_succ_rates[action]
+        resource_needed, amount_per_unit, prob_success = self.action_cost_succ[action]
         resources, severities = self.state_tuple_to_dict(state)
 
-        done = True
-        for severity in severities.values():
-            if severity > self.threshold:
-                done = False
-
-        if done:
+        # If the threshold has been met for all severity values, the problem is considered solved
+        # Return terminal state
+        if all(severity < self.threshold for severity in severities.values()):
             return []
 
         multiplier = 1
@@ -181,13 +195,12 @@ class DisasterMDP(util.MDP):
             resources_spent = resources[resource_needed] // 2
             resources[resource_needed] -= resources_spent
 
-            # If we have too little of a resource, we can't take this action
-            if resources[resource_needed] < 2:
-                return [(state, 1, -1)]
+            multiplier = resources_spent / amount_per_unit
 
-            multiplier = 5 * resources_spent / self.initial_resources[resource_needed]
-
+        # In the fail state, the resources are spent but the severities are not addressed
         fail_state = tuple(resources.values()), tuple(severities.values())
+
+        # Build the success state
         success_state = resources, severities
 
         # Apply the effect of the action
@@ -202,72 +215,33 @@ class DisasterMDP(util.MDP):
         return 1
 
 
-class DMDP(util.MDP):
-    def __init__(self, issuesSuccCost={'fundraise': (1, 250), 'hunger': (0.9, -10), 'infrastructure': (0.8, -25),
-                                       'political': (0.6, -50)}, \
-                 initialSeverities={'fundraise': 0, 'hunger': 5, 'infrastructure': 5, 'political': 5},
-                 initialFunds=1000, threshold=3):
-
-        self.issuesSuccCost = issuesSuccCost
-        self.initialSeverities = [initialSeverities[k] for k in initialSeverities]
-        self.initialFunds = initialFunds
-        self.threshold = threshold
-
-    # Return the start state.
-    def startState(self):
-        return (self.initialFunds, tuple(self.initialSeverities))
-
-    # Return set of actions possible from |state|.
-    def actions(self, state):
-        # IMPLEMENT ME
-
-        """
-        Ideas include: fundraise/send aid/dispatch personnel
-        """
-        return ['fundraise', 'hunger', 'infrastructure', 'political']
-
-    # Given a |state| and |action|, return a list of (newState, prob, reward) tuples
-    # corresponding to the states reachable from |state| when taking |action|.
-    def succAndProbReward(self, state, action):
-        if state[0] < self.issuesSuccCost[action][1]:  # if don't have enough
-            return [(state, 1, -1)]
-        done = True
-        for k in state[1]:
-            if k > self.threshold:
-                done = False
-                break
-        if done:
-            return []
-
-        if action == 'fundraise':
-            index = 0
-        elif action == 'hunger':
-            index = 1
-        elif action == 'infrastructure':
-            index = 2
-        elif action == 'political':
-            index = 3
-
-        newSeverity = []
-        for i in range(len(state[1])):
-            if i == index:
-                newSeverity.append(state[1][i] - 1)
-            else:
-                newSeverity.append(state[1][i])
-
-        succState = (state[0] + self.issuesSuccCost[action][1], tuple(newSeverity))
-        negState = (state[0] + self.issuesSuccCost[action][1], tuple([v for v in state[1]]))
-        return [(succState, self.issuesSuccCost[action][0], -1), (negState, 1 - self.issuesSuccCost[action][0], -1)]
-
-    def discount(self):
-        # We might want to change, depending if we want to see short term or long term goals
-        return 1
-
-
+# Naive extractor - does not work very well due to the
+# sheer magnitude of the number of states
 def identityFeatureExtractor(state, action):
     featureKey = (state, action)
     featureValue = 1
     return [(featureKey, featureValue)]
+
+
+# Much better extractor
+def value_feature_extractor(state, action):
+    features = [(action, 1)]
+    resource_values, severity_values = state
+
+    # For each resource and severity, bucketize the values
+    # so that states with similar values share features
+    for index, value in enumerate(resource_values):
+        if index == 0:
+            # Cash on hand is usually a much larger number, so we take the log then bucketize
+            features.append((('resource', index, math.ceil(math.log(value)), action), 1))
+        else:
+            features.append((('resource', index, value // 3, action), 1))
+    for index, value in enumerate(severity_values):
+        # Bucketize severities based on the nearest 10th
+        features.append((('resource', index, round(value, 1), action), 1))
+    # When we implement compounding severity effects, add features for pairwise severity values, since
+    # that relationship will come into play more
+    return features
 
 
 if __name__ == '__main__':
@@ -282,7 +256,7 @@ if __name__ == '__main__':
     # print('Avg VI Reward:', sum(totalVIRewards)/len(totalVIRewards))
     random.seed(42)
     print('=' * 6, 'initialization', '=' * 6)
-    qLearningSolver = util.QLearningAlgorithm(model.actions, 1, identityFeatureExtractor)
+    qLearningSolver = util.QLearningAlgorithm(model.actions, 1, value_feature_extractor)
     print('=' * 6, 'simulating', '=' * 6)
     totalQLRewards = util.simulate(model, qLearningSolver, numTrials=250000)
     print('Avg QL Reward:', sum(totalQLRewards) / len(totalQLRewards))
