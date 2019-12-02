@@ -47,7 +47,7 @@ class CompoundingEffect():
 class DisasterMDP(util.MDP):
     # For readability (we don't want 25 params), init would only take on default values for state.
     # Any changes to the default value would then be updated using set_initial_state
-    def __init__(self):
+    def __init__(self, randomize=True):
 
         ### INITIAL STATE VARIABLES ###
         """
@@ -91,7 +91,7 @@ class DisasterMDP(util.MDP):
         """
         Threshold for success
         """
-        self.threshold = 3
+        self.threshold = 3.0
 
         ### TRANSITION PROBABILITIES ###
         """
@@ -119,6 +119,8 @@ class DisasterMDP(util.MDP):
             'political_tension': []
         }
 
+        self.randomize = randomize
+
     """
     Call to update the initial state
     |resources|: dict of resource:amount pairs signifying how much of each resource the agent starts off with
@@ -133,7 +135,7 @@ class DisasterMDP(util.MDP):
     |threshold|: the depth to search
     """
 
-    def set_initial_state(self, resources, severities, action_succ_cost, action_effects, compounding_effects, threshold=3):
+    def set_initial_state(self, resources={}, severities={}, action_succ_cost={}, action_effects={}, compounding_effects={}, threshold=3.0):
         for key, value in resources.items():
             if key in self.initial_resources:
                 self.initial_resources[key] = value
@@ -156,6 +158,26 @@ class DisasterMDP(util.MDP):
 
         self.threshold = threshold
 
+    def randomize_initial_state(self):
+        resource_seed = random.uniform(5, 25)
+
+        resources = {
+            'cash': max(200, random.gauss(1000, 200)) * resource_seed,
+            'personnel': max(0.2, random.gauss(1, 0.2)) * resource_seed,
+            'foodstuff': max(0.5, random.gauss(2, 0.5)) * resource_seed
+        }
+
+        severities_seed = random.gauss(resource_seed, 2) / 3
+
+        severities = {
+            'food_shortage': max(1.0, min(10.0, random.gauss(severities_seed, 1.5))),
+            'infrastructure': max(1.0, min(10.0, random.gauss(severities_seed, 1.5))),
+            'civil_unrest': max(1.0, min(10.0, random.gauss(severities_seed, 1.5))),
+            'political_tension': max(1.0, min(10.0, random.gauss(severities_seed, 1.5)))
+        }
+
+        self.set_initial_state(resources=resources, severities=severities)
+
     # Since dicts are not hashable, we have to pass state as a tuple of values
     # This function takes in a state and returns the dicts representing them
     def state_tuple_to_dict(self, state):
@@ -171,6 +193,8 @@ class DisasterMDP(util.MDP):
         return resources, severities
 
     def startState(self):
+        if self.randomize:
+            self.randomize_initial_state()
         return tuple(self.initial_resources.values()), tuple(self.initial_severities.values())
 
     def actions(self, state):
@@ -207,12 +231,17 @@ class DisasterMDP(util.MDP):
         for action_effect in self.action_effects[action]:
             success_state = action_effect.generate_effect(success_state, multiplier)
 
+        _, success_severities = success_state
+        success_reward = -1
+        if all(success_severity < self.threshold for success_severity in success_severities.values()):
+            success_reward = 20
+
         # Apply the compounding severities of the situation (IMPLEMENT LATER)
 
-        return [(fail_state, 1 - prob_success, -1), ((tuple(success_state[0].values()), tuple(success_state[1].values())), prob_success, -1)]
+        return [(fail_state, 1 - prob_success, -1), ((tuple(success_state[0].values()), tuple(success_state[1].values())), prob_success, success_reward)]
 
     def discount(self):
-        return 1
+        return 0.95
 
 
 # Naive extractor - does not work very well due to the
@@ -238,25 +267,7 @@ def value_feature_extractor(state, action):
             features.append((('resource', index, value // 3, action), 1))
     for index, value in enumerate(severity_values):
         # Bucketize severities based on the nearest 10th
-        features.append((('resource', index, round(value, 1), action), 1))
+        features.append((('severity', index, round(value, 1), action), 1))
     # When we implement compounding severity effects, add features for pairwise severity values, since
     # that relationship will come into play more
     return features
-
-
-if __name__ == '__main__':
-    # print('=' * 6, 'initialization', '=' * 6)
-    model = DisasterMDP()
-    # viSolver = util.ValueIteration()
-    # print('=' * 6, 'solving', '=' * 6)
-    # viSolver.solve(model)
-    # fixedVIAlgo = FixedRLAlgorithm(viSolver.pi)
-    # print('=' * 6, 'simulating', '=' * 6)
-    # totalVIRewards = simulate(model, fixedVIAlgo)
-    # print('Avg VI Reward:', sum(totalVIRewards)/len(totalVIRewards))
-    random.seed(42)
-    print('=' * 6, 'initialization', '=' * 6)
-    qLearningSolver = util.QLearningAlgorithm(model.actions, 1, value_feature_extractor)
-    print('=' * 6, 'simulating', '=' * 6)
-    totalQLRewards = util.simulate(model, qLearningSolver, numTrials=250000)
-    print('Avg QL Reward:', sum(totalQLRewards) / len(totalQLRewards))

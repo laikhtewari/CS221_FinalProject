@@ -186,8 +186,6 @@ class QLearningAlgorithm(RLAlgorithm):
         # END_YOUR_CODE
 
 
-
-
 ############################################################
 
 # Perform |numTrials| of the following:
@@ -207,6 +205,8 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
         raise Exception("Invalid probs: %s" % probs)
 
     totalRewards = []  # The rewards we get on each trial
+    totalTurns = [] # The number of turns taken in each trial
+    turn_avg_list = []
     time_list = []
     avg_list = []
     for trial in range(numTrials):
@@ -215,17 +215,23 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
             time_list.append(trial)
             avg = sum(totalRewards)/len(totalRewards)
             print("Curr Avg", avg)
+            avg_turns = sum(totalTurns)/len(totalTurns)
+            print("Curr Avg Turns", avg_turns)
             avg_list.append(avg)
+            turn_avg_list.append(avg_turns)
+            totalTurns = []
+            totalRewards = []
         state = mdp.startState()
         sequence = [state]
         totalDiscount = 1
         totalReward = 0
-        for _ in range(maxIterations):
+        for i in range(maxIterations):
             action = rl.getAction(state)
             transitions = mdp.succAndProbReward(state, action)
             if sort: transitions = sorted(transitions)
             if len(transitions) == 0:
                 rl.incorporateFeedback(state, action, 0, None)
+                totalTurns.append(i)
                 break
 
             # Choose a random transition
@@ -246,8 +252,8 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
     ax = plt.axes()
     plt.title('Training History')
     plt.xlabel('Episodes')
-    plt.ylabel('Rewards')
-    ax.plot(time_list, avg_list)
+    plt.ylabel('Turns Taken')
+    ax.plot(time_list, turn_avg_list)
     plt.show()
     # plt.plot(time_list, avg_list)
     return totalRewards
