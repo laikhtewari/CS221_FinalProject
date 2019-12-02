@@ -1,11 +1,14 @@
 import util, model, random, sys
+from matplotlib import pyplot as plt
+
 
 def give_intro():
     print('Welcome to disaster relief simulation! What would you like to do?')
     print('A: Run Q-Learning with randomized initial states')
     print('B: Run Q-Learning with predefined initial states')
-    print('C: Simulate custom decisions with randomized initial state')
-    print('D: Simulate custom decisions with predefined initial state')
+    print('C: Run Q-Learning with randomized initial states and plot multiple features')
+    print('D: Simulate custom decisions with randomized initial state')
+    print('E: Simulate custom decisions with predefined initial state')
     while True:
         response = input('Select A, B, C, or D: ')
         if response.upper() == 'A':
@@ -150,22 +153,65 @@ def run_custom_simulation(initialState='random'):
                     print(key + ':', val)
             state = newState
 
-    print('Turns taken:', num_turns)
+
+def simulate_with_feature(feature_extractor, randomize=True):
+    mdp = model.DisasterMDP(randomize=randomize)
+    random.seed(42)
+    print('Simulating with', feature_extractor.__name__)
+    print('=' * 6, 'initialization', '=' * 6)
+    qLearningSolver = util.QLearningAlgorithm(mdp.actions, 1, feature_extractor)
+    print('=' * 6, 'simulating', '=' * 6)
+    totalQLRewards, time_list, turn_avg_list, avg_list = util.simulate(mdp, qLearningSolver, numTrials=num_trials)
+    print('Avg QL Reward:', sum(totalQLRewards) / len(totalQLRewards))
+    return time_list, turn_avg_list, avg_list
+
 
 if __name__ == '__main__':
     user_input = give_intro()
-    if user_input == 'A' or user_input == 'B':
+    if user_input == 'A' or user_input == 'B' or user_input == 'C':
         num_trials = query_num_trials()
-        randomize = user_input == 'A'
-        mdp = model.DisasterMDP(randomize=randomize)
-        random.seed(42)
-        print('=' * 6, 'initialization', '=' * 6)
-        qLearningSolver = util.QLearningAlgorithm(mdp.actions, 1, model.value_feature_extractor)
-        print('=' * 6, 'simulating', '=' * 6)
-        totalQLRewards = util.simulate(mdp, qLearningSolver, numTrials=num_trials)
-        print('Avg QL Reward:', sum(totalQLRewards) / len(totalQLRewards))
+        if user_input == 'A' or user_input == 'B':
+            randomize = user_input == 'A'
+            time_list, turn_avg_list, _ = simulate_with_feature(model.bucket_feature_extractor, randomize=randomize)
+            fig = plt.figure()
+            ax = plt.axes()
+            plt.title('Training History')
+            plt.xlabel('Episodes')
+            plt.ylabel('Turns Taken')
+            ax.plot(time_list, turn_avg_list)
+            plt.show()
+        else:
+            data = {}
+            data['bucket'] = simulate_with_feature(model.bucket_feature_extractor)
+            data['small_bucket'] = simulate_with_feature(model.small_bucket_feature_extractor)
+            data['bucket_max'] = simulate_with_feature(model.bucket_max_feature_extractor)
+            data['joint'] = simulate_with_feature(model.joint_feature_extractor)
+            # data['joint_bucket'] = simulate_with_feature(model.joint_bucket_feature_extractor)
+            data['joint_bucket_max'] = simulate_with_feature(model.joint_bucket_max_feature_extractor)
+            plt.figure()
+            plt.title('Training History (Reward)')
+            plt.xlabel('Episodes')
+            plt.ylabel('Turns Taken')
+            for key, value in data.items():
+                plt.plot(value[0], value[2], label=key)
+            plt.legend()
+            plt.show()
+        # randomize = user_input == 'A'
+        # mdp = model.DisasterMDP(randomize=randomize)
+        # random.seed(42)
+        # print('=' * 6, 'initialization', '=' * 6)
+        # qLearningSolver = util.QLearningAlgorithm(mdp.actions, 1, model.joint_feature_extractor)
+        # print('=' * 6, 'simulating', '=' * 6)
+        # totalQLRewards = util.simulate(mdp, qLearningSolver, numTrials=num_trials)
+        # print('Avg QL Reward:', sum(totalQLRewards) / len(totalQLRewards))
+        # weights = qLearningSolver.weights
+        # sorted_weights = sorted(weights.items(), key=lambda kv: abs(kv[1]))
+        # print('Here are the top 10 weights by absolute value')
+        # print(sorted_weights[-10:])
     else:
-        if user_input == 'C':
+        if user_input == 'D':
             run_custom_simulation()
         else:
             run_custom_simulation(initialState='not random')
+
+

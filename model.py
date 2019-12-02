@@ -91,7 +91,7 @@ class DisasterMDP(util.MDP):
         """
         Threshold for success
         """
-        self.threshold = 3.0
+        self.threshold = 1.0
 
         ### TRANSITION PROBABILITIES ###
         """
@@ -234,14 +234,14 @@ class DisasterMDP(util.MDP):
         _, success_severities = success_state
         success_reward = -1
         if all(success_severity < self.threshold for success_severity in success_severities.values()):
-            success_reward = 20
+            success_reward = 25
 
         # Apply the compounding severities of the situation (IMPLEMENT LATER)
 
         return [(fail_state, 1 - prob_success, -1), ((tuple(success_state[0].values()), tuple(success_state[1].values())), prob_success, success_reward)]
 
     def discount(self):
-        return 0.95
+        return 0.9
 
 
 # Naive extractor - does not work very well due to the
@@ -253,8 +253,29 @@ def identityFeatureExtractor(state, action):
 
 
 # Much better extractor
-def value_feature_extractor(state, action):
-    features = [(action, 1)]
+def bucket_feature_extractor(state, action):
+    features = []
+    resource_values, severity_values = state
+
+    # For each resource and severity, bucketize the values
+    # so that states with similar values share features
+    for index, value in enumerate(resource_values):
+        if index == 0:
+            # Cash on hand is usually a much larger number, so we take the log then bucketize
+            features.append((('resource', index, math.ceil(math.log(value)), action), 1))
+        else:
+            features.append((('resource', index, value // 3, action), 1))
+    for index, value in enumerate(severity_values):
+        # Bucketize severities based on the nearest 10th
+        features.append((('severity', index, round(value), action), 1))
+
+    # max_severity, _ = max(enumerate(severity_values), key=lambda iv: iv[1])
+    # features.append((('max severity', max_severity, action), 1))
+    return features
+
+
+def small_bucket_feature_extractor(state, action):
+    features = []
     resource_values, severity_values = state
 
     # For each resource and severity, bucketize the values
@@ -268,6 +289,50 @@ def value_feature_extractor(state, action):
     for index, value in enumerate(severity_values):
         # Bucketize severities based on the nearest 10th
         features.append((('severity', index, round(value, 1), action), 1))
-    # When we implement compounding severity effects, add features for pairwise severity values, since
-    # that relationship will come into play more
+
+    # max_severity, _ = max(enumerate(severity_values), key=lambda iv: iv[1])
+    # features.append((('max severity', max_severity, action), 1))
     return features
+
+
+def max_severity_extractor(state, action):
+    resource_values, severity_values = state
+    max_severity, _ = max(enumerate(severity_values), key=lambda iv: iv[1])
+    return [(('max severity', max_severity, action), 1)]
+
+
+def bucket_max_feature_extractor(state, action):
+    bucket_features = bucket_feature_extractor(state, action)
+    max_features = max_severity_extractor(state, action)
+    return bucket_features + max_features
+
+
+def joint_feature_extractor(state, action):
+    features = []
+    resource_values, severity_values = state
+
+    for index, value in enumerate(resource_values):
+        if index == 0:
+            # Cash on hand is usually a much larger number, so we take the log then bucketize
+            resource_tuple = ('resource', index, math.ceil(math.log(value)), action)
+        else:
+            resource_tuple = ('resource', index, value // 5, action)
+
+        for i, v in enumerate(severity_values):
+            joint_tuple = resource_tuple + ('severity', i, round(v), action)
+            features.append((joint_tuple, 1))
+
+    return features
+
+
+def joint_bucket_feature_extractor(state, action):
+    bucket_features = bucket_feature_extractor(state, action)
+    joint_features = joint_feature_extractor(state, action)
+    return bucket_features + joint_features
+
+
+def joint_bucket_max_feature_extractor(state, action):
+    bucket_features = bucket_feature_extractor(state, action)
+    joint_features = joint_feature_extractor(state, action)
+    max_features = max_severity_extractor(state, action)
+    return bucket_features + joint_features + max_features

@@ -194,7 +194,7 @@ class QLearningAlgorithm(RLAlgorithm):
 # Each trial will run for at most |maxIterations|.
 # Return the list of rewards that we get for each trial.
 def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
-             sort=False):
+             sort=False, incorporate=True):
     # Return i in [0, ..., len(probs)-1] with probability probs[i].
     def sample(probs):
         target = random.random()
@@ -219,8 +219,6 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
             print("Curr Avg Turns", avg_turns)
             avg_list.append(avg)
             turn_avg_list.append(avg_turns)
-            totalTurns = []
-            totalRewards = []
         state = mdp.startState()
         sequence = [state]
         totalDiscount = 1
@@ -230,7 +228,8 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
             transitions = mdp.succAndProbReward(state, action)
             if sort: transitions = sorted(transitions)
             if len(transitions) == 0:
-                rl.incorporateFeedback(state, action, 0, None)
+                if incorporate:
+                    rl.incorporateFeedback(state, action, 0, None)
                 totalTurns.append(i)
                 break
 
@@ -241,19 +240,12 @@ def simulate(mdp, rl, numTrials=10, maxIterations=1000, verbose=False,
             sequence.append(reward)
             sequence.append(newState)
 
-            rl.incorporateFeedback(state, action, reward, newState)
+            if incorporate:
+                rl.incorporateFeedback(state, action, reward, newState)
             totalReward += totalDiscount * reward
             totalDiscount *= mdp.discount()
             state = newState
         if verbose:
             print(("Trial %d (totalReward = %s): %s" % (trial, totalReward, sequence)))
         totalRewards.append(totalReward)
-    fig = plt.figure()
-    ax = plt.axes()
-    plt.title('Training History')
-    plt.xlabel('Episodes')
-    plt.ylabel('Turns Taken')
-    ax.plot(time_list, turn_avg_list)
-    plt.show()
-    # plt.plot(time_list, avg_list)
-    return totalRewards
+    return totalRewards, time_list, turn_avg_list, avg_list
