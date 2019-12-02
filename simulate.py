@@ -1,5 +1,6 @@
 import util, model, random, sys
 from matplotlib import pyplot as plt
+import numpy as np
 
 
 def give_intro():
@@ -9,6 +10,8 @@ def give_intro():
     print('C: Run Q-Learning with randomized initial states and plot multiple features')
     print('D: Simulate custom decisions with randomized initial state')
     print('E: Simulate custom decisions with predefined initial state')
+    print('F: Find distribution of weight vectors')
+    print('G: Find the averages of the weight vectors')
     while True:
         response = input('Select A, B, C, or D: ')
         if response.upper() == 'A':
@@ -19,6 +22,12 @@ def give_intro():
             return 'C'
         if response.upper() == 'D':
             return 'D'
+        if response.upper() == 'E':
+            return 'E'
+        if response.upper() == 'F':
+            return 'F'
+        if response.upper() == 'G':
+            return 'G'
         print('Invalid input')
 
 def query_num_trials():
@@ -166,9 +175,68 @@ def simulate_with_feature(feature_extractor, randomize=True):
     return time_list, turn_avg_list, avg_list
 
 
+def find_weights_distribution():
+    mdp = model.DisasterMDP()
+    random.seed(42)
+    print('=' * 6, 'initialization', '=' * 6)
+    qLearningSolver = util.QLearningAlgorithm(mdp.actions, 1, model.joint_bucket_max_feature_extractor)
+    print('=' * 6, 'simulating', '=' * 6)
+    totalQLRewards, _, _, _ = util.simulate(mdp, qLearningSolver, numTrials=num_trials)
+    print('Avg QL Reward:', sum(totalQLRewards) / len(totalQLRewards))
+    weights = qLearningSolver.weights
+    sorted_weights = sorted(weights.items(), key=lambda kv: abs(kv[1]))
+    print('Here are the top 10% of weights by absolute value')
+    num_keep = 100
+    highest_weights = sorted_weights[-1 * num_keep:]
+    labels = ['resources', 'severities', 'max', 'joint']
+    counter = [0, 0, 0, 0]
+    for w, _ in highest_weights:
+        if 'resource' in w:
+            if 'severity' in w:
+                counter[3] += 1
+            else:
+                counter[0] += 1
+        elif 'severity' in w:
+            counter[1] += 1
+        elif 'max_severity' in w:
+            counter[2] += 1
+    return labels, counter
+
+
+def weight_averages():
+    mdp = model.DisasterMDP()
+    random.seed(42)
+    print('=' * 6, 'initialization', '=' * 6)
+    qLearningSolver = util.QLearningAlgorithm(mdp.actions, 1, model.joint_bucket_max_feature_extractor)
+    print('=' * 6, 'simulating', '=' * 6)
+    totalQLRewards, _, _, _ = util.simulate(mdp, qLearningSolver, numTrials=num_trials)
+    print('Avg QL Reward:', sum(totalQLRewards) / len(totalQLRewards))
+    weights = qLearningSolver.weights
+    labels = ['resources', 'severities', 'max', 'joint']
+    counter = [0, 0, 0, 0]
+    sums = [0, 0, 0, 0]
+    for w, val in weights.items():
+        if 'resource' in w:
+            if 'severity' in w:
+                counter[3] += 1
+                sums[3] += abs(val)
+            else:
+                counter[0] += 1
+                sums[0] += abs(val)
+        elif 'severity' in w:
+            counter[1] += 1
+            sums[1] += abs(val)
+        elif 'max_severity' in w:
+            counter[2] += 1
+            sums[2] += abs(val)
+    for i in range(len(sums)):
+        sums[i] /= counter[i]
+    return labels, sums
+
+
 if __name__ == '__main__':
     user_input = give_intro()
-    if user_input == 'A' or user_input == 'B' or user_input == 'C':
+    if user_input == 'A' or user_input == 'B' or user_input == 'C' or user_input == 'F' or user_input == 'G':
         num_trials = query_num_trials()
         if user_input == 'A' or user_input == 'B':
             randomize = user_input == 'A'
@@ -180,7 +248,7 @@ if __name__ == '__main__':
             plt.ylabel('Turns Taken')
             ax.plot(time_list, turn_avg_list)
             plt.show()
-        else:
+        elif user_input == 'C':
             data = {}
             data['bucket'] = simulate_with_feature(model.bucket_feature_extractor)
             data['small_bucket'] = simulate_with_feature(model.small_bucket_feature_extractor)
@@ -195,6 +263,26 @@ if __name__ == '__main__':
             for key, value in data.items():
                 plt.plot(value[0], value[2], label=key)
             plt.legend()
+            plt.show()
+        elif user_input == 'F':
+            labels, counter = find_weights_distribution()
+            explode = (0.1, 0, 0, 0)
+            colors = ['gold', 'yellowgreen', 'lightskyblue', 'lightcoral']
+            plt.pie(counter, startangle=140, labels=labels, autopct='%1.1f%%', shadow=True, explode=explode, colors=colors)
+            # plt.legend(patches, labels, loc="best")
+            # plt.axis('equal')
+            plt.title('Categories of top 100 features by absolute value of weight')
+            # plt.tight_layout()
+            plt.show()
+        else:
+            labels, averages = weight_averages()
+            colors = ['gold', 'yellowgreen', 'lightskyblue', 'lightcoral']
+            y_pos = np.arange(len(labels))
+            plt.barh(y_pos, averages, align='center')
+            plt.yticks(y_pos, labels=labels)
+            plt.ylabel(labels)
+            plt.xlabel('Average of magnitude of weights')
+            plt.title('Averages of the magnitude of the weights of each feature category')
             plt.show()
         # randomize = user_input == 'A'
         # mdp = model.DisasterMDP(randomize=randomize)
@@ -211,7 +299,8 @@ if __name__ == '__main__':
     else:
         if user_input == 'D':
             run_custom_simulation()
-        else:
+        elif user_input == 'E':
             run_custom_simulation(initialState='not random')
+
 
 

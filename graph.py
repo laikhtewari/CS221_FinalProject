@@ -3,6 +3,7 @@ import numpy as np
 import model, util, random
 
 random.seed(42)
+num_iterations = 50000
 
 simple_mdp = model.DisasterMDP(randomize=False)
 
@@ -41,7 +42,7 @@ complex_mdp.set_initial_state(resources=complex_resources, severities=complex_se
 def train(feature_extractor):
     mdp = model.DisasterMDP(randomize=True)
     qLearningSolver = util.QLearningAlgorithm(mdp.actions, 1, feature_extractor)
-    util.simulate(mdp, qLearningSolver, numTrials=50001)
+    util.simulate(mdp, qLearningSolver, numTrials=num_iterations)
     return qLearningSolver
 
 
@@ -87,8 +88,9 @@ for name in names:
 plt.xlabel('group', fontweight='bold')
 plt.xticks([r + barWidth for r in range(len(bars[key_value_list[0][0]]))], ['Simple', 'Moderate', 'Complex'])
 
-plt.title('Performance Compared to Human Agent')
+plt.title('Performance Compared to Human Agent (' + str(num_iterations) + ' Training Iterations)')
 plt.ylabel('Average Turns Taken')
 plt.legend()
+plt.ylim(0, 75)
 plt.show()
 

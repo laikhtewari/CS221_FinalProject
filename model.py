@@ -163,8 +163,8 @@ class DisasterMDP(util.MDP):
 
         resources = {
             'cash': max(200, random.gauss(1000, 200)) * resource_seed,
-            'personnel': max(0.2, random.gauss(1, 0.2)) * resource_seed,
-            'foodstuff': max(0.5, random.gauss(2, 0.5)) * resource_seed
+            'personnel': max(0.5, random.gauss(2, 0.2)) * resource_seed,
+            'foodstuff': max(0.8, random.gauss(4, 0.5)) * resource_seed
         }
 
         severities_seed = random.gauss(resource_seed, 2) / 3
@@ -298,7 +298,7 @@ def small_bucket_feature_extractor(state, action):
 def max_severity_extractor(state, action):
     resource_values, severity_values = state
     max_severity, _ = max(enumerate(severity_values), key=lambda iv: iv[1])
-    return [(('max severity', max_severity, action), 1)]
+    return [(('max_severity', max_severity, action), 1)]
 
 
 def bucket_max_feature_extractor(state, action):
